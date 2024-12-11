@@ -43,9 +43,85 @@ bool soundLedState = LOW;
 #include "htmlContent.h"
 
 void setup() {
-  // Initialization code...
+   Serial.begin(115200);
+
+  // Initialize sensors and LEDs
+  dht.begin();
+  pinMode(TEMP_LED, OUTPUT);
+  pinMode(GAS_LED, OUTPUT);
+  pinMode(SOUND_LED, OUTPUT);
+
+  // Connect to Wi-Fi
+  WiFi.begin(ssid, password);
+  Serial.println("Connecting to WiFi...");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.print(".");
+  }
+  Serial.println("\nConnected to WiFi");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  // Start Web Server
+  server.on("/", HTTP_GET, []() {
+    server.send_P(200, "text/html", index_html);
+  });
+
+  server.on("/data", HTTP_GET, []() {
+    String json = String("{\"temperature\":") + temperature +
+                  ",\"gas\":" + mq2Value +
+                  ",\"sound\":" + soundValue +
+                  ",\"tempAlert\":" + (temperature > TEMP_THRESHOLD) +
+                  ",\"gasAlert\":" + (mq2Value > MQ2_THRESHOLD) +
+                  ",\"soundAlert\":" + (soundValue > SOUND_THRESHOLD) + "}";
+    server.send(200, "application/json", json);
+  });
+
+  server.begin();
+  Serial.println("Web Server started");
 }
 
+
 void loop() {
-  // Sensor reading and LED handling code...
+  // Read sensors
+  temperature = dht.readTemperature();
+  mq2Value = analogRead(MQ2PIN);
+  soundValue = analogRead(SOUND_SENSOR_PIN);
+
+  // Handle LED blinking for alerts
+  unsigned long currentMillis = millis();
+
+  if (temperature > TEMP_THRESHOLD) {
+    if (currentMillis - previousMillisTemp >= blinkInterval) {
+      previousMillisTemp = currentMillis;
+      tempLedState = !tempLedState;
+      digitalWrite(TEMP_LED, tempLedState);
+    }
+  } else {
+    digitalWrite(TEMP_LED, LOW);
+  }
+
+  if (mq2Value > MQ2_THRESHOLD) {
+    if (currentMillis - previousMillisGas >= blinkInterval) {
+      previousMillisGas = currentMillis;
+      gasLedState = !gasLedState;
+      digitalWrite(GAS_LED, gasLedState);
+    }
+  } else {
+    digitalWrite(GAS_LED, LOW);
+  }
+
+  if (soundValue > SOUND_THRESHOLD) {
+    if (currentMillis - previousMillisSound >= blinkInterval) {
+      previousMillisSound = currentMillis;
+      soundLedState = !soundLedState;
+      digitalWrite(SOUND_LED, soundLedState);
+    }
+  } else {
+    digitalWrite(SOUND_LED, LOW);
+  }
+
+  // Handle web server client requests
+  server.handleClient();
 }
+
